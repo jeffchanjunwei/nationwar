@@ -1,0 +1,2399 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>🌏 国战·十四国天下</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; font-family: 'Courier New', monospace; }
+  #game { position: relative; width: 100vw; height: 100vh; }
+
+  /* 加载屏幕 */
+  #loading {
+    position: absolute; inset: 0; background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 1000; color: #fff; transition: opacity 0.5s;
+  }
+  #loading h1 { font-size: 48px; color: #ffdf00; text-shadow: 4px 4px 0 #c00; margin-bottom: 30px; }
+  #loading-bar-wrap {
+    width: 360px; height: 24px; background: rgba(255,255,255,0.1);
+    border: 2px solid #ffdf00; border-radius: 12px; overflow: hidden;
+  }
+  #loading-bar {
+    width: 0%; height: 100%; background: linear-gradient(90deg, #ffdf00, #ff6f00);
+    transition: width 0.3s;
+  }
+  #loading-text { margin-top: 16px; font-size: 16px; color: #aaa; }
+
+  /* 顶部 HUD */
+  #hud {
+    position: absolute; top: 20px; left: 20px; right: 20px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    color: #fff; font-size: 18px; font-weight: bold;
+    text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    z-index: 10; pointer-events: none;
+  }
+  .hud-box {
+    background: rgba(0,0,0,0.5); padding: 10px 18px;
+    border-radius: 10px; border: 2px solid rgba(255,223,0,0.5);
+    backdrop-filter: blur(8px);
+  }
+  .hud-box.interactive { pointer-events: auto; cursor: pointer; user-select: none; }
+  .hud-box.interactive:hover { border-color: #ffdf00; transform: translateY(-2px); }
+
+  /* 底部回合顺序条 */
+  #turn-order {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+    pointer-events: none; z-index: 10; max-width: 95vw;
+  }
+  .turn-chip {
+    padding: 6px 10px; border-radius: 6px;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,223,0,0.4);
+    color: #fff; font-size: 13px; backdrop-filter: blur(8px);
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+  }
+  .turn-chip.active { transform: scale(1.2); box-shadow: 0 0 16px rgba(255,223,0,0.8); border-color: #ffdf00; z-index: 11; }
+  .turn-chip.player { border-color: #ff5252; border-width: 2px; }
+  .turn-chip.destroyed { opacity: 0.3; text-decoration: line-through; }
+
+  /* 开始 / 结束 / 通用面板 */
+  .panel {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.85);
+    color: #fff; padding: 30px 50px;
+    border: 4px solid #ffdf00;
+    border-radius: 20px; text-align: center;
+    z-index: 100; min-width: 420px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 0 60px rgba(255, 223, 0, 0.5);
+    backdrop-filter: blur(20px);
+  }
+  .panel h1 {
+    font-size: 38px; color: #ffdf00;
+    text-shadow: 3px 3px 0 #c00;
+    margin-bottom: 18px;
+  }
+  .panel h2 { font-size: 22px; color: #ffdf00; margin: 14px 0 8px; }
+  .panel p { font-size: 14px; margin: 6px 0; }
+  .panel .info { font-size: 12px; color: #88a; margin-top: 10px; }
+  .panel button {
+    margin: 10px 6px; padding: 10px 24px;
+    font-size: 16px; font-weight: bold;
+    background: #ffdf00; color: #c00; border: none;
+    border-radius: 10px; cursor: pointer;
+    box-shadow: 0 4px 0 #c90;
+    transition: transform 0.1s;
+  }
+  .panel button:hover { transform: translateY(-2px); }
+  .panel button:active { transform: translateY(2px); box-shadow: 0 0 0 #c90; }
+  .panel button.secondary { background: #607d8b; color: #fff; box-shadow: 0 4px 0 #37474f; }
+  .panel button.danger { background: #f44336; color: #fff; box-shadow: 0 4px 0 #b71c1c; }
+  .panel button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .hidden { display: none; }
+
+  /* 国家选择 / 目标选择 */
+  #country-grid, #target-grid, #warehouse-grid, #result-list {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+    margin: 14px 0; max-width: 720px;
+  }
+  .country-btn, .target-btn {
+    padding: 8px 14px; margin: 2px;
+    border: 2px solid #ffdf00; border-radius: 8px;
+    cursor: pointer; font-weight: bold; color: #fff;
+    background: rgba(255,255,255,0.1);
+    font-size: 14px; transition: transform 0.1s;
+  }
+  .country-btn:hover, .target-btn:hover { transform: translateY(-2px); border-color: #fff; }
+  .country-btn.selected, .target-btn.selected { background: rgba(255,223,0,0.3); border-color: #ffdf00; }
+  .country-btn.destroyed { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
+
+  /* 转盘 */
+  .wheel-host {
+    display: inline-block; margin: 10px; vertical-align: top;
+  }
+  .wheel {
+    position: relative; width: 220px; height: 220px;
+    border-radius: 50%; border: 6px solid #ffdf00;
+    box-shadow: 0 0 24px rgba(255,223,0,0.4);
+    background: #333;
+    transition: transform 3.5s cubic-bezier(0.17, 0.67, 0.3, 1);
+  }
+  .wheel-segment {
+    position: absolute; left: 50%; top: 50%;
+    width: 0; height: 0;
+    transform-origin: 0 0;
+    font-weight: bold; color: #fff;
+    text-shadow: 1px 1px 0 #000;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .wheel-label {
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: 0 0;
+    font-size: 12px; font-weight: bold; color: #fff;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    pointer-events: none; white-space: nowrap;
+  }
+  .wheel-pointer {
+    position: absolute; top: -16px; left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-top: 24px solid #ffdf00;
+    z-index: 5; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  }
+  .wheel-caption {
+    text-align: center; color: #ffdf00; font-weight: bold;
+    margin-top: 8px; font-size: 16px;
+  }
+
+  /* 物品卡片 */
+  .item-card {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,223,0,0.4);
+    border-radius: 10px; padding: 10px 14px; margin: 6px;
+    display: inline-block; min-width: 180px; max-width: 240px;
+    vertical-align: top; text-align: left;
+  }
+  .item-card .item-name { font-weight: bold; color: #ffdf00; font-size: 16px; margin-bottom: 4px; }
+  .item-card .item-kind { font-size: 11px; color: #aaa; margin-bottom: 6px; }
+  .item-card .item-desc { font-size: 12px; color: #ccc; margin-bottom: 8px; line-height: 1.4; }
+  .item-card .item-actions { display: flex; gap: 4px; }
+  .item-card button { padding: 6px 12px; font-size: 12px; margin: 0; }
+  .item-card.discarded { opacity: 0.3; }
+  .item-card.kept { border-color: #4caf50; box-shadow: 0 0 12px rgba(76,175,80,0.4); }
+  .item-card.warehouse-full { border-color: #f44336; }
+
+  /* HP 条 */
+  .hp-bar {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 80px; pointer-events: none; z-index: 5;
+    text-align: center;
+  }
+  .hp-fill {
+    height: 8px; border-radius: 4px; background: #4caf50;
+    border: 1px solid rgba(0,0,0,0.5);
+    transition: width 0.3s, background-color 0.3s;
+  }
+  .hp-label {
+    font-size: 12px; color: #fff; font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+    margin-bottom: 2px;
+  }
+
+  /* 浮动提示 */
+  .toast {
+    position: absolute; top: 90px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.85); color: #ffdf00;
+    padding: 12px 24px; border-radius: 10px;
+    border: 2px solid #ffdf00;
+    font-weight: bold; font-size: 16px;
+    z-index: 200; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+
+  /* 战斗特写小窗边框（与 animate() 中 PIP_W/H、px/py 对齐） */
+  #pip-frame {
+    position: absolute; right: 20px; bottom: 70px;
+    width: 340px; height: 240px;
+    border: 3px solid #ffdf00; border-radius: 12px;
+    box-shadow: 0 0 24px rgba(255,223,0,0.6);
+    z-index: 8; pointer-events: none;
+    background: rgba(0,0,0,0.0);  /* 透明，让 Three.js PiP 透出 */
+    transition: opacity 0.2s;
+  }
+  #pip-frame .pip-label {
+    position: absolute; top: -14px; left: 12px;
+    background: #ffdf00; color: #c00;
+    padding: 2px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: bold;
+  }
+  #pip-frame .pip-attacker, #pip-frame .pip-target {
+    position: absolute; bottom: 8px;
+    background: rgba(0,0,0,0.7); color: #fff;
+    padding: 3px 8px; border-radius: 4px;
+    font-size: 12px; font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+  }
+  #pip-frame .pip-attacker { left: 8px; }
+  #pip-frame .pip-target { right: 8px; }
+  #pip-frame .pip-leader {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: #ffdf00;
+    padding: 3px 10px; border-radius: 4px;
+    font-size: 12px; font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+    border: 1px solid rgba(255,223,0,0.5);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <!-- 加载屏幕 -->
+  <div id="loading">
+    <h1>🌏 国战·十四国天下</h1>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <div id="loading-text">初始化海洋...</div>
+  </div>
+
+  <!-- 顶部 HUD -->
+  <div id="hud">
+    <div class="hud-box">🏴 我的国家: <span id="my-name">—</span></div>
+    <div class="hud-box">❤️ 血量: <span id="my-hp">1000</span>/<span id="my-hp-max">1000</span></div>
+    <div class="hud-box">⚔️ 军队: <span id="my-army">0</span></div>
+    <div class="hud-box">📦 仓库: <span id="my-items">0/6</span></div>
+    <div class="hud-box interactive" id="open-warehouse-btn">🎒 打开仓库</div>
+    <div class="hud-box interactive" id="mute-btn">🔊 音效</div>
+    <div class="hud-box">⏱️ 距下次抽奖: <span id="spin-cd">60</span>s</div>
+    <div class="hud-box">🎯 当前回合: <span id="turn-name">—</span></div>
+  </div>
+
+  <!-- 底部回合顺序条 -->
+  <div id="turn-order"></div>
+
+  <!-- 战斗特写小窗边框（Three.js 在此区域内渲染 PiP） -->
+  <div id="pip-frame" class="hidden">
+    <div class="pip-label">🎯 战斗特写</div>
+    <div class="pip-leader" id="pip-leader">👤 首领: 无</div>
+    <div class="pip-attacker" id="pip-attacker">—</div>
+    <div class="pip-target" id="pip-target">→ —</div>
+  </div>
+
+  <!-- 浮动提示 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- 开始面板 -->
+  <div id="start-panel" class="panel hidden">
+    <h1>🌏 国战·十四国天下</h1>
+    <p>选择一个国家，征服七海！</p>
+    <p class="info">每隔 60 秒抽 3 个转盘，奖品最多存 6 件。游戏过程中其他国家会随机攻击，玩家可以消耗物品。</p>
+    <h2>选择你的国家</h2>
+    <div id="country-grid"></div>
+    <p class="info">🟥 红色边框 = 已选择</p>
+    <button id="start-btn">🎮 开始游戏</button>
+  </div>
+
+  <!-- 转盘面板 -->
+  <div id="wheel-panel" class="panel hidden">
+    <h1>🎰 抽奖时间！</h1>
+    <p>依次转动 3 个转盘（人物 / 技能 / 装备）</p>
+    <div>
+      <div class="wheel-host">
+        <div class="wheel" id="wheel-character"></div>
+        <div class="wheel-caption">👤 人物</div>
+      </div>
+      <div class="wheel-host">
+        <div class="wheel" id="wheel-skill"></div>
+        <div class="wheel-caption">🌀 技能</div>
+      </div>
+      <div class="wheel-host">
+        <div class="wheel" id="wheel-equipment"></div>
+        <div class="wheel-caption">🗡️ 装备</div>
+      </div>
+    </div>
+    <div id="wheel-buttons">
+      <button id="spin-btn">🎲 开始抽奖</button>
+      <button id="skip-spin-btn" class="secondary">跳过本轮</button>
+    </div>
+    <p class="info" id="spin-status">点击「开始抽奖」按钮</p>
+  </div>
+
+  <!-- 结果面板 -->
+  <div id="result-panel" class="panel hidden">
+    <h1>✨ 抽奖结果</h1>
+    <p>选择保留或丢弃每件物品</p>
+    <div id="result-list"></div>
+    <p class="info" id="result-info">仓库最多 6 件</p>
+    <div>
+      <button id="result-confirm-btn">✅ 确认</button>
+      <button id="result-keep-all-btn" class="secondary">全部保留</button>
+    </div>
+  </div>
+
+  <!-- 目标选择面板 -->
+  <div id="target-panel" class="panel hidden">
+    <h1>🎯 选择攻击目标</h1>
+    <p>这是你的回合！</p>
+    <div id="target-grid"></div>
+    <div id="target-item-choice" style="margin: 10px 0;">
+      <p class="info">消耗仓库物品（可选）：</p>
+      <div id="target-items"></div>
+    </div>
+    <div>
+      <button id="cancel-attack-btn" class="secondary">取消选择</button>
+      <button id="confirm-attack-btn" class="danger" disabled>🚀 发起攻击</button>
+    </div>
+  </div>
+
+  <!-- 控制技能面板 -->
+  <div id="control-panel" class="panel hidden">
+    <h1>🎮 操控别的国家</h1>
+    <p>选择一个 AI 国家为你攻击指定目标</p>
+    <h2>被操控的国家</h2>
+    <div id="control-puppet-grid"></div>
+    <h2>攻击目标</h2>
+    <div id="control-target-grid"></div>
+    <div>
+      <button id="control-cancel-btn" class="secondary">取消</button>
+      <button id="control-confirm-btn" class="danger" disabled>⚔️ 发起攻击</button>
+    </div>
+  </div>
+
+  <!-- 仓库面板 -->
+  <div id="warehouse-panel" class="panel hidden">
+    <h1>📦 仓库 (<span id="warehouse-count">0</span>/6)</h1>
+    <div id="warehouse-grid"></div>
+    <p class="info" id="warehouse-empty">仓库是空的。等待抽奖或攻击获胜获得物品。</p>
+    <button id="close-warehouse-btn">关闭</button>
+  </div>
+
+  <!-- 结束面板 -->
+  <div id="end-panel" class="panel hidden">
+    <h1 id="end-title">💀 国破家亡</h1>
+    <p id="end-stats"></p>
+    <button id="restart-btn">🔄 重新开始</button>
+  </div>
+
+  <!-- 诊断 -->
+  <div id="diag" style="position:fixed;top:5px;left:5px;background:lime;color:black;padding:4px 8px;font-size:11px;font-family:monospace;z-index:99999;border-radius:3px;max-width:90%;"></div>
+</div>
+
+<!-- 关键：先在普通 script 里绑一次 click 作为 module 加载失败的兜底 -->
+<!-- ✅ 修复：不要在 DOMContentLoaded 里重复绑定，否则会覆盖 module 设置的 onclick -->
+<script>
+(function() {
+  function safeStart(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    var sp = document.getElementById('start-panel');
+    var ld = document.getElementById('loading');
+    if (sp) { sp.style.display = 'none'; sp.remove(); }
+    if (ld) { ld.style.display = 'none'; ld.remove(); }
+    document.body.style.cursor = 'default';
+    alert('⚠️ 游戏脚本未能加载，请检查控制台错误');
+  }
+  window.safeStart = safeStart;
+  // 仅在解析时绑一次；module 加载后会用真正的 startGame 覆盖 onclick
+  var btn = document.getElementById('start-btn');
+  if (btn) btn.onclick = safeStart;
+})();
+</script>
+
+<script>
+  // 内联诊断：检查是否使用 file:// 协议（这会导致 ES Modules 失败）
+  (function() {
+    const diag = document.getElementById('diag');
+    if (!diag) return;
+    const isFile = location.protocol === 'file:';
+    diag.textContent = '协议: ' + location.protocol + ' | ' + (isFile ? '❌ 需要 http://' : '✅ OK') + ' | ' + location.href;
+    if (isFile) {
+      diag.style.background = 'red';
+      diag.style.color = 'white';
+      diag.style.fontSize = '14px';
+      diag.style.padding = '10px';
+      diag.innerHTML = '❌ 错误：你正在用 <b>file://</b> 打开！<br>必须用 <b>http://</b> 协议<br>在终端运行：<br><code style="background:black;color:lime;padding:5px;">cd /Users/jeffchanjunwei/workspace/github.com/jeffchanjunwei/pytorch-exercise && python3 -m http.server 8000</code><br>然后访问 <b>http://localhost:8000/nationwar.html</b>';
+    }
+  })();
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ============================================================
+// 配置
+// ============================================================
+const CONFIG = {
+  worldSize: 80,          // 海洋正方形边长
+  islandRadius: 3.5,      // 岛屿显示半径
+  oceanLevel: -0.2,       // 海平面 Y
+
+  startingHP: 1000,       // 起始血量
+  startingArmy: 100,      // 起始军队规模
+  baseAttack: 1.2,        // 军队→伤害系数
+  baseDefense: 0.6,       // 军队→减伤系数
+
+  shipSpeed: 6,           // 军舰移动速度 (单位/秒)
+  cannonballSpeed: 25,    // 炮弹初速度
+  cannonballGravity: -18, // 重力
+  explosionDuration: 0.9, // 爆炸持续秒数
+  explosionParticles: 16, // 爆炸粒子数
+
+  spinInterval: 60,       // 转盘间隔（用户要求 10 分钟 = 600，测试用 60）
+  spinDuration: 3.5,      // 转盘旋转秒数
+  warehouseMax: 6,        // 仓库最大物品数
+
+  cameraHeight: 36,       // 相机高度
+  cameraDistance: 4,      // 相机距目标点 (沿 z 偏移)
+  cameraTilt: 0.95,       // 俯视系数 (1 = 完全俯视)
+
+  seed: 1337,             // 确定性 RNG 种子
+};
+
+// ============================================================
+// 状态枚举
+// ============================================================
+const STATE = {
+  MENU: 'menu',                  // 开始面板
+  SPIN: 'spin',                  // 转盘面板
+  SPIN_RESULT: 'spin_result',    // 抽奖结果
+  ROUND_INTRO: 'round_intro',    // 回合介绍（短暂闪烁）
+  AI_TURN: 'ai_turn',            // AI 攻击回合
+  PLAYER_TURN: 'player_turn',    // 玩家攻击回合
+  CONTROL_TURN: 'control_turn',  // 控制技能回合
+  GAME_OVER: 'game_over',        // 游戏结束
+};
+
+let gameState = STATE.MENU;
+
+// ============================================================
+// 国家定义 (14 个)
+// ============================================================
+const NATION_DEFS = [
+  { id:'tang',    name:'唐',    color:0xd4af37, flagColor:0xff6f00, sailColor:0xffeb3b, char:'🏯', label:'🏯 唐'    },
+  { id:'beisong', name:'北宋',  color:0x1976d2, flagColor:0x0d47a1, sailColor:0x64b5f6, char:'🏛️', label:'🏛️ 北宋'  },
+  { id:'nansong', name:'南宋',  color:0x388e3c, flagColor:0x1b5e20, sailColor:0x81c784, char:'⛩️', label:'⛩️ 南宋'  },
+  { id:'yuan',    name:'元',    color:0xc62828, flagColor:0xb71c1c, sailColor:0xef5350, char:'🐎', label:'🐎 元'    },
+  { id:'ming',    name:'明',    color:0xfbc02d, flagColor:0xf57f17, sailColor:0xfff176, char:'🏮', label:'🏮 明'    },
+  { id:'qing',    name:'清',    color:0x6a1b9a, flagColor:0x4a148c, sailColor:0xba68c8, char:'🐉', label:'🐉 清'    },
+  { id:'chen',    name:'陈',    color:0x00838f, flagColor:0x006064, sailColor:0x4fb3bf, char:'⛰️', label:'⛰️ 陈'    },
+  { id:'jun',     name:'俊',    color:0xe65100, flagColor:0xbf360c, sailColor:0xffb74d, char:'⚔️', label:'⚔️ 俊'    },
+  { id:'usa',     name:'美国',  color:0x0d47a1, flagColor:0xb71c1c, sailColor:0xffffff, char:'🗽', label:'🗽 美国'  },
+  { id:'russia',  name:'俄罗斯',color:0xb71c1c, flagColor:0x0d47a1, sailColor:0x000000, char:'🐻', label:'🐻 俄罗斯'},
+  { id:'cs',      name:'春秋',  color:0x5d4037, flagColor:0x3e2723, sailColor:0xa1887f, char:'📜', label:'📜 春秋'  },
+  { id:'zg',      name:'战国',  color:0x424242, flagColor:0x212121, sailColor:0x9e9e9e, char:'🛡️', label:'🛡️ 战国'  },
+  { id:'italy',   name:'意大利',color:0x2e7d32, flagColor:0xc62828, sailColor:0xffffff, char:'🍕', label:'🍕 意大利'},
+  { id:'uk',      name:'英国',  color:0x1a237e, flagColor:0xc62828, sailColor:0xffffff, char:'👑', label:'👑 英国'  },
+];
+
+// ============================================================
+// 转盘数据
+// ============================================================
+const WHEEL_CHARACTERS = [
+  { id:'speed',     name:'闪速人',     kind:'character', color:0x00e5ff, attackMul:1.6, defenseMul:0.7, desc:'攻击极快但防御薄弱' },
+  { id:'dark',      name:'黑暗神秘人', kind:'character', color:0x9c27b0, attackMul:1.1, defenseMul:1.1, desc:'均衡的暗影战士' },
+  { id:'blackhole', name:'黑洞之神',   kind:'character', color:0x1a237e, attackMul:2.0, defenseMul:0.5, desc:'攻击毁灭级，自身易碎' },
+  { id:'fire',      name:'火焰人',     kind:'character', color:0xff6f00, attackMul:1.3, defenseMul:1.0, desc:'灼烧攻击附带持续伤害' },
+  { id:'super',     name:'超级战士',   kind:'character', color:0xffd600, attackMul:1.0, defenseMul:1.5, desc:'铜墙铁壁，输出一般' },
+  { id:'chain',     name:'锁链人',     kind:'character', color:0x9e9e9e, attackMul:0.9, defenseMul:1.3, desc:'束缚敌方攻击节奏' },
+  { id:'energy',    name:'能量之神',   kind:'character', color:0x76ff03, attackMul:1.4, defenseMul:1.2, desc:'全能型，无明显短板' },
+];
+const WHEEL_SKILLS = [
+  { id:'control',   name:'操控别的国家',                kind:'skill', subkind:'control',   desc:'下一回合控制一个 AI 国家为你攻击一个目标' },
+  { id:'protect',   name:'保护本国',                    kind:'skill', subkind:'protect',   desc:'本回合免疫所有伤害' },
+  { id:'instigate', name:'挑拨离间让两个国家打起来',    kind:'skill', subkind:'instigate', desc:'本回合追加 1 次 AI 对 AI 战斗' },
+];
+const WHEEL_EQUIPMENT = [
+  { id:'rocket', name:'冲天弹',                 kind:'equipment', subkind:'damage',  mul:2.0,  desc:'攻击伤害 ×2（消耗）' },
+  { id:'cannon', name:'黑暗之炮',               kind:'equipment', subkind:'pierce',  mul:0,    desc:'无视防御（消耗）' },
+  { id:'beam',   name:'魔法光束',               kind:'equipment', subkind:'execute', mul:0.4,  desc:'目标 HP<40% 直接灭国（消耗）' },
+  { id:'army',   name:'无中生有变出一亿军队',   kind:'equipment', subkind:'buff',    army:10000, desc:'本国军队 +10000（消耗）' },
+  { id:'armor',  name:'黄金铠甲',               kind:'equipment', subkind:'shield',  mul:0.3,  desc:'本回合受到伤害 ×0.3（消耗）' },
+  { id:'revive', name:'复活药水',               kind:'equipment', subkind:'revive',  mul:1.0,  desc:'HP=0 时满血复活（一次性）' },
+];
+
+const ITEM_KIND_LABEL = {
+  character: '👤 人物',
+  skill: '🌀 技能',
+  equipment: '🗡️ 装备',
+};
+const ITEM_SUBKIND_LABEL = {
+  control: '操控',
+  protect: '保护',
+  instigate: '挑拨',
+  damage: '伤害',
+  pierce: '穿透',
+  execute: '处决',
+  buff: '增兵',
+  shield: '护盾',
+  revive: '复活',
+};
+
+// ============================================================
+// 工具函数
+// ============================================================
+
+// Mulberry32: 确定性伪随机
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32(CONFIG.seed);
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function setLoading(pct, txt) {
+  const bar = document.getElementById('loading-bar');
+  const text = document.getElementById('loading-text');
+  if (bar) bar.style.width = pct + '%';
+  if (text) text.textContent = txt;
+}
+
+function showToast(msg, duration = 2000) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._tid);
+  showToast._tid = setTimeout(() => t.classList.remove('show'), duration);
+}
+
+function pickSegmentColor(i, n) {
+  // 8 色相均匀分布，循环复用
+  const hue = (i * (360 / Math.max(n, 1))) % 360;
+  return `hsl(${hue}, 70%, 55%)`;
+}
+
+// ============================================================
+// 音效（Web Audio API 程序化合成，无外部资源）
+// ============================================================
+let audioCtx = null;
+let noiseBuffer = null;
+let soundEnabled = true;
+
+function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { audioCtx = null; console.warn('音效不可用:', e); }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function getNoise() {
+  if (!audioCtx) return null;
+  if (!noiseBuffer) {
+    const len = Math.floor(audioCtx.sampleRate * 1.0);
+    noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuffer;
+}
+
+function playCannon() {
+  if (!audioCtx || !soundEnabled) return;
+  const t = audioCtx.currentTime;
+  // 低频 boom
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(140, t);
+  osc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.42);
+  // 噪声爆裂
+  const src = audioCtx.createBufferSource(); src.buffer = getNoise();
+  const filt = audioCtx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 900;
+  const ng = audioCtx.createGain();
+  ng.gain.setValueAtTime(0.35, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  src.connect(filt).connect(ng).connect(audioCtx.destination);
+  src.start(t); src.stop(t + 0.26);
+}
+
+function playExplosion() {
+  if (!audioCtx || !soundEnabled) return;
+  const t = audioCtx.currentTime;
+  const src = audioCtx.createBufferSource(); src.buffer = getNoise();
+  const filt = audioCtx.createBiquadFilter(); filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(2200, t);
+  filt.frequency.exponentialRampToValueAtTime(200, t + 0.5);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.45, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+  src.connect(filt).connect(g).connect(audioCtx.destination);
+  src.start(t); src.stop(t + 0.62);
+  // 低频轰鸣
+  const osc = audioCtx.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(90, t);
+  osc.frequency.exponentialRampToValueAtTime(30, t + 0.5);
+  const og = audioCtx.createGain();
+  og.gain.setValueAtTime(0.35, t);
+  og.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  osc.connect(og).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.52);
+}
+
+function playTick() {
+  if (!audioCtx || !soundEnabled) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator(); osc.type = 'square'; osc.frequency.value = 1400;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.12, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.05);
+}
+
+// 简单旋律：notes = [[freq, dur], ...]，type 为波形
+function playMelody(notes, type = 'square', vol = 0.18) {
+  if (!audioCtx || !soundEnabled) return;
+  let t = audioCtx.currentTime;
+  for (const [freq, dur] of notes) {
+    const osc = audioCtx.createOscillator(); osc.type = type; osc.frequency.value = freq;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.9);
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + dur);
+    t += dur;
+  }
+}
+
+function playWin() {
+  // 上行大三度琶音
+  playMelody([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.3]], 'square', 0.2);
+}
+
+function playLose() {
+  // 下行小调
+  playMelody([[440, 0.18], [349, 0.18], [262, 0.18], [196, 0.45]], 'sawtooth', 0.18);
+}
+
+function playSpinEnd() {
+  playMelody([[880, 0.08], [1175, 0.12]], 'triangle', 0.18);
+}
+
+
+// ============================================================
+// 加载管理 + 全局错误监听
+// ============================================================
+setLoading(10, '初始化海洋...');
+window.addEventListener('error', (e) => {
+  const lt = document.getElementById('loading-text');
+  if (lt) {
+    lt.style.color = '#ff5252';
+    lt.textContent = '❌ 错误: ' + (e.message || String(e.error || e));
+  }
+  const ld = document.getElementById('loading');
+  if (ld) ld.style.display = 'flex';
+});
+
+// ============================================================
+// 场景 / 相机 / 渲染器 / 灯光
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);  // ✅ 与雾色一致，地平线无色差
+scene.fog = new THREE.Fog(0x87ceeb, 60, 140);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 500);
+camera.position.set(0, CONFIG.cameraHeight, CONFIG.cameraDistance);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.autoClear = false;  // ✅ 手动清屏，配合 PiP 的 scissor，避免泄漏 scissor 状态导致主画面被裁
+document.getElementById('game').prepend(renderer.domElement);
+
+const sun = new THREE.DirectionalLight(0xfff4d6, 1.1);
+sun.position.set(30, 50, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
+sun.shadow.camera.top = 60; sun.shadow.camera.bottom = -60;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 150;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0x6080a0, 0.7));
+scene.add(new THREE.HemisphereLight(0x87ceeb, 0x1e3a5f, 0.5));
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ============================================================
+// 海洋（带顶点 sin 波）
+// ============================================================
+let oceanMesh;
+function buildOcean() {
+  const seg = 40;
+  const geo = new THREE.PlaneGeometry(CONFIG.worldSize, CONFIG.worldSize, seg, seg);
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x1e88e5,
+    roughness: 0.4,
+    metalness: 0.3,
+    flatShading: true,
+  });
+  oceanMesh = new THREE.Mesh(geo, mat);
+  oceanMesh.position.y = CONFIG.oceanLevel;
+  oceanMesh.receiveShadow = true;
+  oceanMesh.userData.basePositions = geo.attributes.position.array.slice();
+  scene.add(oceanMesh);
+}
+
+function updateOceanWaves(time) {
+  if (!oceanMesh) return;
+  const pos = oceanMesh.geometry.attributes.position;
+  const base = oceanMesh.userData.basePositions;
+  for (let i = 0; i < pos.count; i++) {
+    const ix = i * 3;
+    const bx = base[ix], bz = base[ix + 2];
+    pos.array[ix + 1] = Math.sin(bx * 0.3 + time * 1.2) * 0.15 + Math.cos(bz * 0.4 + time * 1.5) * 0.12;
+  }
+  pos.needsUpdate = true;
+}
+
+setLoading(20, '构建世界...');
+buildOcean();
+
+// ============================================================
+// 国家布局（抖动 4×4 网格）
+// ============================================================
+function placeNations() {
+  const half = CONFIG.worldSize / 2;
+  const gridN = 4;
+  const cell = CONFIG.worldSize / gridN;
+  const positions = [];
+  const minDist = cell * 0.8;
+  for (let r = 0; r < gridN; r++) {
+    for (let c = 0; c < gridN; c++) {
+      if (positions.length >= 14) break;
+      const jx = (rng() - 0.5) * cell * 0.4;
+      const jz = (rng() - 0.5) * cell * 0.4;
+      const x = -half + cell * (c + 0.5) + jx;
+      const z = -half + cell * (r + 0.5) + jz;
+      let ok = true;
+      for (const p of positions) {
+        if (Math.hypot(p.x - x, p.z - z) < minDist) { ok = false; break; }
+      }
+      if (ok) positions.push({ x, z });
+    }
+  }
+  return positions;
+}
+
+// ============================================================
+// 国家运行时状态
+// ============================================================
+const nations = [];  // { def, x, z, island, mesh, hp, army, alive, shielded, currentChar, currentSkill }
+
+function buildIslandMesh(def) {
+  const g = new THREE.Group();
+  // 沙滩底座
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(CONFIG.islandRadius, CONFIG.islandRadius * 1.15, 1.2, 16),
+    new THREE.MeshStandardMaterial({ color: 0xd2a679, roughness: 0.9 })
+  );
+  base.position.y = 0.4;
+  base.castShadow = true; base.receiveShadow = true;
+  g.add(base);
+  // 草地
+  const grass = new THREE.Mesh(
+    new THREE.CylinderGeometry(CONFIG.islandRadius * 0.92, CONFIG.islandRadius * 0.92, 0.4, 16),
+    new THREE.MeshStandardMaterial({ color: 0x66bb6a, roughness: 0.95 })
+  );
+  grass.position.y = 1.0;
+  grass.castShadow = true; grass.receiveShadow = true;
+  g.add(grass);
+  // 旗杆
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.05, 0.05, 3.2, 6),
+    new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.3 })
+  );
+  pole.position.y = 2.6;
+  g.add(pole);
+  // 旗面（双面）
+  const flag = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 0.7),
+    new THREE.MeshStandardMaterial({ color: def.flagColor, side: THREE.DoubleSide, roughness: 0.7 })
+  );
+  flag.position.set(0.55, 3.7, 0);
+  flag.userData.isFlag = true;
+  g.add(flag);
+  // 城堡
+  const castle = new THREE.Mesh(
+    new THREE.BoxGeometry(1.8, 1.4, 1.8),
+    new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.75 })
+  );
+  castle.position.y = 1.85;
+  castle.castShadow = true;
+  g.add(castle);
+  // 屋顶
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(1.4, 1.0, 4),
+    new THREE.MeshStandardMaterial({ color: def.flagColor, roughness: 0.7 })
+  );
+  roof.position.y = 3.05;
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  g.add(roof);
+  // 国徽字符（用一块彩色立方代替 emoji）
+  const emblem = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.6, 0.6),
+    new THREE.MeshStandardMaterial({ color: def.color, emissive: def.flagColor, emissiveIntensity: 0.4 })
+  );
+  emblem.position.set(0, 2.4, 0.95);
+  g.add(emblem);
+  return g;
+}
+
+function buildAllNations() {
+  const positions = placeNations();
+  for (let i = 0; i < NATION_DEFS.length && i < positions.length; i++) {
+    const def = NATION_DEFS[i];
+    const pos = positions[i];
+    const island = buildIslandMesh(def);
+    island.position.set(pos.x, CONFIG.oceanLevel, pos.z);
+    scene.add(island);
+    nations.push({
+      def, x: pos.x, z: pos.z, island,
+      hp: CONFIG.startingHP,
+      army: CONFIG.startingArmy,
+      alive: true,
+      shielded: false,
+      currentChar: null,
+      currentSkill: null,
+      currentEquipment: null,
+    });
+  }
+}
+
+setLoading(35, '建立国家...');
+buildAllNations();
+
+// ============================================================
+// HP 条 (HTML 覆盖)
+// ============================================================
+const hpBars = [];
+const _hpScratch = new THREE.Vector3();  // 复用，避免每帧 new Vector3
+function setupHPBars() {
+  for (const n of nations) {
+    const el = document.createElement('div');
+    el.className = 'hp-bar';
+    el.innerHTML = `<div class="hp-label">${n.def.name} ${n.hp}</div><div class="hp-fill"></div>`;
+    document.getElementById('game').appendChild(el);
+    hpBars.push({
+      nation: n, el,
+      label: el.querySelector('.hp-label'),
+      fill: el.querySelector('.hp-fill'),
+      // ✅ 缓存上次写入的值，只在变化时写 DOM（避免 layout thrash）
+      lastX: NaN, lastY: NaN, lastPct: -1, lastLabel: '', lastAlive: null,
+    });
+  }
+}
+function updateHPBars() {
+  for (const hb of hpBars) {
+    const n = hb.nation;
+    if (!n.alive) {
+      if (hb.lastAlive !== false) { hb.el.style.display = 'none'; hb.lastAlive = false; }
+      continue;
+    }
+    if (hb.lastAlive !== true) { hb.el.style.display = 'block'; hb.lastAlive = true; }
+    // 复用 scratch vector，避免每帧 clone
+    _hpScratch.set(n.island.position.x, n.island.position.y + 5.5, n.island.position.z);
+    _hpScratch.project(camera);
+    const x = (_hpScratch.x * 0.5 + 0.5) * innerWidth | 0;  // 取整，减少像素抖动
+    const y = (-_hpScratch.y * 0.5 + 0.5) * innerHeight | 0;
+    if (x !== hb.lastX) { hb.el.style.left = x + 'px'; hb.lastX = x; }
+    if (y !== hb.lastY) { hb.el.style.top = y + 'px'; hb.lastY = y; }
+    const pct = clamp(n.hp / CONFIG.startingHP, 0, 1);
+    const pctPct = (pct * 100) | 0;
+    if (pctPct !== hb.lastPct) {
+      hb.fill.style.width = pctPct + '%';
+      hb.fill.style.background = pct > 0.5 ? '#4caf50' : pct > 0.25 ? '#ff9800' : '#f44336';
+      hb.lastPct = pctPct;
+    }
+    const lbl = `${n.def.name} ${n.hp}`;
+    if (lbl !== hb.lastLabel) { hb.label.textContent = lbl; hb.lastLabel = lbl; }
+  }
+}
+
+setupHPBars();
+
+// ============================================================
+// 军舰 (低多边形)
+// ============================================================
+function buildWarship(def) {
+  const g = new THREE.Group();
+  // 船身
+  const hull = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 0.35, 1.8),
+    new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 })
+  );
+  hull.position.y = 0.2;
+  hull.castShadow = true;
+  g.add(hull);
+  // 船首（圆锥指向 +z）
+  const bow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.32, 0.7, 4),
+    new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 })
+  );
+  bow.rotation.x = Math.PI / 2;
+  bow.position.set(0, 0.2, 1.15);
+  bow.castShadow = true;
+  g.add(bow);
+  // 桅杆
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6),
+    new THREE.MeshStandardMaterial({ color: 0x4e342e })
+  );
+  mast.position.set(0, 0.75, 0);
+  g.add(mast);
+  // 帆
+  const sail = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.7, 0.8),
+    new THREE.MeshStandardMaterial({ color: def.sailColor, side: THREE.DoubleSide, roughness: 0.85 })
+  );
+  sail.position.set(0, 1.0, 0);
+  g.add(sail);
+  // 旗
+  const wflag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.4, 0.25),
+    new THREE.MeshStandardMaterial({ color: def.flagColor, side: THREE.DoubleSide })
+  );
+  wflag.position.set(0, 1.45, 0);
+  g.add(wflag);
+  // 2 门炮
+  for (const sx of [-0.32, 0.32]) {
+    const c = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.6, roughness: 0.5 })
+    );
+    c.rotation.x = Math.PI / 2;
+    c.position.set(sx, 0.32, -0.5);
+    g.add(c);
+  }
+  // ✅ 返回 { mesh } 包装，与 tweenShip/fireCannonball/performCombat 的 ship.mesh 用法一致
+  return { mesh: g };
+}
+
+// 首领标记：光柱 + 旋转光环 + 点光，挂在军舰上随船移动
+function buildLeaderMarker(color) {
+  const g = new THREE.Group();
+  // 发光光柱
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.14, 2.4, 8),
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, transparent: true, opacity: 0.85 })
+  );
+  pillar.position.y = 2.4;
+  g.add(pillar);
+  // 顶部旋转光环
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.45, 0.07, 8, 18),
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.0 })
+  );
+  ring.position.y = 3.7; ring.rotation.x = Math.PI / 2;
+  g.add(ring);
+  // 点光：人物配色气场
+  const light = new THREE.PointLight(color, 1.4, 9, 2);
+  light.position.y = 2.6;
+  g.add(light);
+  g.userData.isLeader = true;
+  g.userData.ring = ring;
+  return g;
+}
+
+
+const debrisPool = [];      // 碎片粒子池（BoxGeometry + MeshStandardMaterial）
+
+function spawnExplosion(pos, color = 0xffaa00, count = CONFIG.explosionParticles, force = 1) {
+  for (let i = 0; i < count; i++) {
+    let p = explosionPool.pop();
+    if (!p) {
+      p = {
+        kind: 'explosion',
+        mesh: new THREE.Mesh(
+          new THREE.SphereGeometry(0.28, 6, 4),
+          new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 })
+        ),
+        baseScale: 1,
+        vx: 0, vy: 0, vz: 0,
+        life: 0, maxLife: CONFIG.explosionDuration,
+        gravity: -8,
+      };
+    } else {
+      p.mesh.material.color.setHex(color);
+      p.mesh.material.opacity = 1;
+    }
+    p.mesh.material.color.setHex(color);
+    p.mesh.material.opacity = 1;
+    p.mesh.position.copy(pos);
+    p.baseScale = 0.5 + rng() * 0.5;
+    p.mesh.scale.setScalar(p.baseScale);
+    p.mesh.visible = true;
+    const angle = (i / count) * Math.PI * 2 + rng() * 0.5;
+    const speed = (3 + rng() * 4) * force;
+    p.vx = Math.cos(angle) * speed;
+    p.vz = Math.sin(angle) * speed;
+    p.vy = (2 + rng() * 4) * force;
+    p.life = 0;
+    p.maxLife = CONFIG.explosionDuration * (0.7 + rng() * 0.5);
+    p.gravity = -8;
+    if (!p.mesh.parent) scene.add(p.mesh);
+    activeParticles.push(p);
+  }
+}
+
+function spawnDebris(pos) {
+  // 灰色碎片（国家沉没）— 独立池，复用 geometry/material，不再每帧 new
+  for (let i = 0; i < 24; i++) {
+    let p = debrisPool.pop();
+    if (!p) {
+      p = {
+        kind: 'debris',
+        mesh: new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.4, 0.4),
+          new THREE.MeshStandardMaterial({ color: 0x666666, transparent: true, opacity: 1 })
+        ),
+        baseScale: 1,
+        vx: 0, vy: 0, vz: 0, life: 0, maxLife: 2.0, gravity: -6,
+      };
+    } else {
+      // ✅ 复用：只重置颜色/透明度，不重建 geometry/material
+      p.mesh.material.color.setHex(0x666666);
+      p.mesh.material.opacity = 1;
+    }
+    p.mesh.position.copy(pos);
+    p.baseScale = 0.5 + rng() * 1.0;
+    p.mesh.scale.setScalar(p.baseScale);
+    p.mesh.visible = true;
+    const angle = rng() * Math.PI * 2;
+    const speed = 4 + rng() * 5;
+    p.vx = Math.cos(angle) * speed;
+    p.vz = Math.sin(angle) * speed;
+    p.vy = 4 + rng() * 6;
+    p.life = 0;
+    p.maxLife = 2.0;
+    p.gravity = -6;
+    if (!p.mesh.parent) scene.add(p.mesh);
+    activeParticles.push(p);
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = activeParticles.length - 1; i >= 0; i--) {
+    const p = activeParticles[i];
+    p.life += dt;
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+    p.vy += p.gravity * dt;
+    const lifeFrac = p.life / p.maxLife;
+    if (p.mesh.material.transparent) p.mesh.material.opacity = Math.max(0, 1 - lifeFrac);
+    // ✅ 修复：基于 baseScale 计算，不再每帧累加导致膨胀
+    p.mesh.scale.setScalar((p.baseScale || 1) + lifeFrac * 0.5);
+    if (p.life >= p.maxLife) {
+      p.mesh.visible = false;
+      activeParticles.splice(i, 1);
+      // ✅ 按种类回收到对应池
+      if (p.kind === 'debris') debrisPool.push(p);
+      else explosionPool.push(p);
+    }
+  }
+}
+
+// ============================================================
+// 军舰 / 炮弹 动画
+// ============================================================
+
+// 点到线段距离（XZ 平面），返回距离与最近点
+function distPointSeg(px, pz, ax, az, bx, bz) {
+  const abx = bx - ax, abz = bz - az;
+  const len2 = abx * abx + abz * abz;
+  let t = len2 > 0 ? ((px - ax) * abx + (pz - az) * abz) / len2 : 0;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  const cx = ax + abx * t, cz = az + abz * t;
+  return Math.hypot(px - cx, pz - cz);
+}
+
+// 规划军舰路径：起点 → 绕行点 → 终点，避开途中其它岛（不穿过任何国家）
+function buildShipPath(fromX, fromZ, toX, toZ, attacker, target) {
+  const margin = CONFIG.islandRadius + 2.2;   // 绕行点离岛心的最小距离
+  const clearR = CONFIG.islandRadius + 1.6;   // 候选点不能卡进别的岛
+  const waypoints = [{ x: fromX, z: fromZ }];
+  let curX = fromX, curZ = fromZ;
+  // 最多插 8 个绕行点，防止死循环
+  for (let iter = 0; iter < 8; iter++) {
+    // 在当前段 cur→to 上找最近的阻挡岛
+    let blocker = null, best = margin;
+    for (const n of nations) {
+      if (!n.alive || n === attacker || n === target) continue;
+      const d = distPointSeg(n.x, n.z, curX, curZ, toX, toZ);
+      if (d < best) { best = d; blocker = n; }
+    }
+    if (!blocker) break;  // 当前段已无阻挡
+    // 垂直于 cur→to 的方向
+    const dirx = toX - curX, dirz = toZ - curZ;
+    const len = Math.hypot(dirx, dirz) || 1;
+    let perpx = -dirz / len, perpz = dirx / len;
+    // 候选绕行点 = 阻挡岛心 + 垂直方向 * margin
+    let detX = blocker.x + perpx * margin;
+    let detZ = blocker.z + perpz * margin;
+    // 若候选点又卡进别的岛，取反方向
+    for (const n of nations) {
+      if (!n.alive || n === attacker || n === target || n === blocker) continue;
+      if (Math.hypot(n.x - detX, n.z - detZ) < clearR) {
+        detX = blocker.x - perpx * margin;
+        detZ = blocker.z - perpz * margin;
+        break;
+      }
+    }
+    waypoints.push({ x: detX, z: detZ });
+    curX = detX; curZ = detZ;
+  }
+  waypoints.push({ x: toX, z: toZ });
+  return waypoints;
+}
+
+async function tweenShip(ship, attacker, target, speed) {
+  const fromX = attacker.x, fromZ = attacker.z;
+  const toX = target.x, toZ = target.z;
+  // 目标岛周围停靠点（避免压住岛）
+  const dx = toX - fromX, dz = toZ - fromZ;
+  const dist = Math.hypot(dx, dz);
+  const stopR = CONFIG.islandRadius + 1.5;
+  const endX = toX - (dx / dist) * stopR;
+  const endZ = toZ - (dz / dist) * stopR;
+  // 规划路径（含绕行点，不穿过其它岛）
+  const path = buildShipPath(fromX, fromZ, endX, endZ, attacker, target);
+  ship.mesh.position.set(path[0].x, CONFIG.oceanLevel + 0.4, path[0].z);
+  scene.add(ship.mesh);
+  // 计算各段长度与总长
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const ax = path[i].x, az = path[i].z, bx = path[i + 1].x, bz = path[i + 1].z;
+    const L = Math.hypot(bx - ax, bz - az);
+    segs.push({ ax, az, bx, bz, L });
+    total += L;
+  }
+  const duration = Math.max(0.5, total / speed);
+  await new Promise(resolve => {
+    const start = performance.now();
+    function step() {
+      const now = performance.now();
+      const tt = Math.min(1, (now - start) / 1000 / duration);
+      // 找当前所在段
+      let accLen = tt * total;
+      let seg = segs[segs.length - 1], segT = 1;
+      for (let i = 0; i < segs.length; i++) {
+        if (accLen <= segs[i].L) {
+          seg = segs[i];
+          segT = segs[i].L > 0 ? accLen / segs[i].L : 0;
+          break;
+        }
+        accLen -= segs[i].L;
+      }
+      const px = seg.ax + (seg.bx - seg.ax) * segT;
+      const pz = seg.az + (seg.bz - seg.az) * segT;
+      ship.mesh.position.x = px;
+      ship.mesh.position.z = pz;
+      // 朝当前段方向
+      ship.mesh.rotation.y = Math.atan2(seg.bx - seg.ax, seg.bz - seg.az);
+      ship.mesh.rotation.z = Math.sin(now * 0.005) * 0.05;
+      ship.mesh.position.y = CONFIG.oceanLevel + 0.4 + Math.sin(now * 0.004) * 0.05;
+      if (tt < 1) requestAnimationFrame(step);
+      else resolve();
+    }
+    step();
+  });
+}
+
+// 共享炮弹几何体（避免每次开炮 new + 泄漏）
+const CANNONBALL_GEO = new THREE.SphereGeometry(0.22, 8, 6);
+
+async function fireCannonball(shipPos, target) {
+  const ball = new THREE.Mesh(
+    CANNONBALL_GEO,
+    new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x331100, emissiveIntensity: 0.4 })
+  );
+  ball.position.set(shipPos.x, shipPos.y + 0.5, shipPos.z);
+  ball.castShadow = true;
+  scene.add(ball);
+
+  const start = ball.position.clone();
+  const end = target.island.position.clone();
+  end.y = 2.0;
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const dy = end.y - start.y;
+  const dist = Math.hypot(dx, dz);
+  const speed = CONFIG.cannonballSpeed;
+  const flightTime = Math.max(0.5, dist / speed);
+  const vx = dx / flightTime;
+  const vz = dz / flightTime;
+  const vy = (dy - 0.5 * CONFIG.cannonballGravity * flightTime * flightTime) / flightTime;
+
+  const startTime = performance.now();
+  await new Promise(resolve => {
+    function step() {
+      const now = performance.now();
+      const t = (now - startTime) / 1000;
+      if (t >= flightTime) {
+        ball.position.copy(end);
+        resolve();
+        return;
+      }
+      ball.position.x = start.x + vx * t;
+      ball.position.z = start.z + vz * t;
+      ball.position.y = start.y + vy * t + 0.5 * CONFIG.cannonballGravity * t * t;
+      requestAnimationFrame(step);
+    }
+    step();
+  });
+  scene.remove(ball);
+  // ✅ 修复：释放本次开炮的 material（geometry 共享，不释放）
+  ball.material.dispose();
+}
+
+// ============================================================
+// 转盘
+// ============================================================
+const wheels = {
+  character: { host: null, segments: [], data: WHEEL_CHARACTERS },
+  skill:     { host: null, segments: [], data: WHEEL_SKILLS },
+  equipment: { host: null, segments: [], data: WHEEL_EQUIPMENT },
+};
+
+function buildWheel(type) {
+  const w = wheels[type];
+  w.host = document.getElementById('wheel-' + type);
+  w.host.innerHTML = '<div class="wheel-pointer"></div>';
+  w.segments = [];
+  const data = w.data;
+  const step = 360 / data.length;
+  // conic-gradient 背景
+  const stops = data.map((s, i) => {
+    const a = i * step, b = (i + 1) * step;
+    return `${pickSegmentColor(i, data.length)} ${a}deg ${b}deg`;
+  }).join(', ');
+  w.host.style.background = `conic-gradient(${stops})`;
+  // 标签
+  data.forEach((s, i) => {
+    const lbl = document.createElement('div');
+    lbl.className = 'wheel-label';
+    const midAngle = (i + 0.5) * step;
+    // 把标签放在该扇区的中线方向，从圆心向外推 70px
+    const rad = (midAngle - 90) * Math.PI / 180;  // -90 让 0 度在正上方
+    const r = 70;
+    const x = Math.cos(rad) * r;
+    const y = Math.sin(rad) * r;
+    lbl.style.left = `calc(50% + ${x}px)`;
+    lbl.style.top = `calc(50% + ${y}px)`;
+    lbl.style.transform = `translate(-50%, -50%) rotate(${midAngle}deg)`;
+    lbl.textContent = s.name.length > 4 ? s.name.slice(0, 4) : s.name;
+    w.host.appendChild(lbl);
+  });
+  w.host.style.transform = 'rotate(0deg)';
+}
+
+function spinWheel(type, durationMs = CONFIG.spinDuration * 1000) {
+  return new Promise(resolve => {
+    const w = wheels[type];
+    const data = w.data;
+    const winnerIdx = Math.floor(rng() * data.length);
+    const step = 360 / data.length;
+    // 指针在顶部（-90 度），扇区 i 的中线在 (i + 0.5) * step 度
+    // 要让指针指向 winnerIdx，需要 wheel 旋转后 winnerIdx 的中线在顶部
+    // wheel 旋转 angle 时，扇区 i 的中线位置在 angle + (i + 0.5) * step (相对圆心)
+    // 指针在顶部 (0 度)，所以 angle + (i + 0.5) * step = 0
+    // 即 angle = -(i + 0.5) * step
+    const baseTurns = 5 + Math.floor(rng() * 2);  // 5-6 圈
+    const finalAngle = -(winnerIdx + 0.5) * step;
+    const totalDeg = baseTurns * 360 + finalAngle;
+    w.host.style.transition = `transform ${durationMs}ms cubic-bezier(0.17, 0.67, 0.3, 1)`;
+    w.host.style.transform = `rotate(${totalDeg}deg)`;
+    // ✅ 转盘滴答音：随减速间隔变长（模拟扇区划过指针）
+    let tickInterval = 40;
+    const tickTimer = setInterval(() => {
+      playTick();
+      tickInterval *= 1.18;  // 减速 → 间隔变长
+      if (tickInterval > durationMs * 0.6) clearInterval(tickTimer);
+    }, tickInterval);
+    setTimeout(() => {
+      clearInterval(tickTimer);
+      playSpinEnd();  // ✅ 落定音
+      resolve({ ...data[winnerIdx], idx: winnerIdx });
+    }, durationMs + 50);
+  });
+}
+
+function resetWheels() {
+  for (const type of ['character', 'skill', 'equipment']) {
+    const w = wheels[type];
+    w.host.style.transition = 'none';
+    w.host.style.transform = 'rotate(0deg)';
+    // 强制重排
+    void w.host.offsetWidth;
+    w.host.style.transition = '';
+  }
+}
+
+setLoading(50, '构建转盘...');
+buildWheel('character');
+buildWheel('skill');
+buildWheel('equipment');
+
+// ============================================================
+// 仓库系统
+// ============================================================
+const warehouse = [];  // 物品数组，每项是完整的 def 副本
+
+function addToWarehouse(item) {
+  warehouse.push(item);
+  showToast(`📦 获得 ${item.name}！仓库 ${warehouse.length}/${CONFIG.warehouseMax}`);
+}
+
+function discardFromWarehouse(idx) {
+  const [removed] = warehouse.splice(idx, 1);
+  showToast(`🗑️ 丢弃了 ${removed.name}`);
+}
+
+function tryKeepWithOverflow(item) {
+  if (warehouse.length < CONFIG.warehouseMax) {
+    addToWarehouse(item);
+    return true;
+  }
+  // 满了：自动 FIFO 丢弃最旧
+  const removed = warehouse.shift();
+  warehouse.push(item);
+  showToast(`📦 仓库满，丢弃 ${removed.name} 以放入 ${item.name}`);
+  return true;
+}
+
+function warehouseHasRevive(n) {
+  return warehouse.some(i => i.subkind === 'revive');
+}
+
+function consumeReviveFromWarehouse(n) {
+  const idx = warehouse.findIndex(i => i.subkind === 'revive');
+  if (idx >= 0) {
+    warehouse.splice(idx, 1);
+    return true;
+  }
+  return false;
+}
+
+// ============================================================
+// 战斗系统
+// ============================================================
+function computeAttack(attacker, defender, itemUsed = null) {
+  const charA = attacker.currentChar || { attackMul: 1 };
+  const charD = defender.currentChar || { defenseMul: 1 };
+  let raw = CONFIG.baseAttack * attacker.army * charA.attackMul;
+  let def = CONFIG.baseDefense * defender.army * charD.defenseMul;
+  let dmg = Math.max(0, raw - def);
+  if (itemUsed) {
+    if (itemUsed.subkind === 'damage')  dmg *= itemUsed.mul;
+    if (itemUsed.subkind === 'pierce')  dmg = raw * charA.attackMul;  // 无视防御
+    if (itemUsed.subkind === 'execute' && defender.hp / CONFIG.startingHP < itemUsed.mul) dmg = defender.hp;
+  }
+  dmg *= 0.85 + rng() * 0.3;  // ±15% 浮动
+  return Math.round(dmg);
+}
+
+function applyDamage(defender, dmg) {
+  if (defender.shielded) {
+    showToast(`🛡️ ${defender.def.name} 受保护，免疫伤害！`);
+    dmg = 0;
+  }
+  // 复活药水
+  if (defender.hp - dmg <= 0 && warehouseHasRevive(defender)) {
+    consumeReviveFromWarehouse(defender);
+    defender.hp = CONFIG.startingHP;
+    showToast(`💖 ${defender.def.name} 复活药水生效！满血复活！`);
+    spawnExplosion(defender.island.position, 0xff5252, 24, 1.2);
+    return;
+  }
+  defender.hp = Math.max(0, defender.hp - dmg);
+  if (defender.hp === 0) {
+    destroyNation(defender);
+  }
+}
+
+function destroyNation(n) {
+  if (!n.alive) return;
+  n.alive = false;
+  spawnExplosion(n.island.position, 0x666666, 28, 1.5);
+  spawnDebris(n.island.position);
+  playExplosion();  // ✅ 灭国爆炸音效
+  cameraShake = 0.6;
+  // 让岛沉下去
+  n.island.userData.sinkStart = performance.now();
+  // 闪红
+  flashHUD();
+  showToast(`💀 ${n.def.name} 灭国了！`);
+  if (n === playerNation) {
+    setTimeout(() => gameOver(false), 1200);
+  }
+}
+
+// 让岛屿沉没（动画）
+function updateIslandSink(now) {
+  for (const n of nations) {
+    if (!n.island.visible) continue;
+    if (n.island.userData.sinkStart) {
+      const t = (now - n.island.userData.sinkStart) / 1000;
+      if (t > 0.05) {
+        n.island.position.y = CONFIG.oceanLevel - t * 2.5;
+        if (t > 1.5) {
+          n.island.visible = false;
+          n.island.userData.sinkStart = null;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================
+// HUD 更新
+// ============================================================
+let currentTurnNation = null;
+let spinCountdown = CONFIG.spinInterval;
+let roundNumber = 0;
+let spinPending = false;       // 倒计时到 0，待回合空隙触发抽奖
+let resumeAfterSpin = false;   // 抽完后是否恢复被打断的回合（true=继续，false=开新回合）
+
+function updateHUD() {
+  const p = playerNation;
+  document.getElementById('my-name').textContent = p ? `${p.def.char} ${p.def.name}` : '—';
+  document.getElementById('my-hp').textContent = p ? p.hp : 0;
+  document.getElementById('my-hp-max').textContent = CONFIG.startingHP;
+  document.getElementById('my-army').textContent = p ? p.army : 0;
+  document.getElementById('my-items').textContent = `${warehouse.length}/${CONFIG.warehouseMax}`;
+  document.getElementById('spin-cd').textContent = Math.max(0, Math.ceil(spinCountdown));
+  document.getElementById('turn-name').textContent = currentTurnNation ? `${currentTurnNation.def.name}` : '—';
+  const hpEl = document.getElementById('my-hp');
+  if (p && p.hp < 300) hpEl.style.color = '#ff5252';
+  else hpEl.style.color = '#fff';
+}
+
+function buildTurnStrip(order) {
+  const strip = document.getElementById('turn-order');
+  strip.innerHTML = '';
+  order.forEach((n, idx) => {
+    const chip = document.createElement('div');
+    let cls = 'turn-chip';
+    if (n === playerNation) cls += ' player';
+    if (!n.alive) cls += ' destroyed';
+    chip.className = cls;
+    chip.style.borderColor = '#' + n.def.color.toString(16).padStart(6, '0');
+    chip.textContent = `${idx + 1}.${n.def.name}`;
+    chip.dataset.nationId = n.def.id;
+    strip.appendChild(chip);
+  });
+}
+
+function highlightTurn(n) {
+  document.querySelectorAll('.turn-chip').forEach(c => c.classList.remove('active'));
+  const sel = document.querySelector(`.turn-chip[data-nation-id="${n.def.id}"]`);
+  if (sel) sel.classList.add('active');
+}
+
+// ============================================================
+// 闪烁 HUD 红边
+// ============================================================
+let hudFlashTime = 0;
+function flashHUD() { hudFlashTime = 0.4; }
+
+function updateHUDFlash(dt) {
+  if (hudFlashTime > 0) {
+    hudFlashTime -= dt;
+    const intensity = Math.max(0, hudFlashTime / 0.4);
+    document.getElementById('hud').style.boxShadow = `inset 0 0 ${40 * intensity}px rgba(255, 0, 0, ${intensity})`;
+  } else {
+    document.getElementById('hud').style.boxShadow = '';
+  }
+}
+
+// ============================================================
+// 相机
+// ============================================================
+let cameraTargetPos = new THREE.Vector3(0, CONFIG.cameraHeight, CONFIG.cameraDistance);
+let cameraLookAt = new THREE.Vector3(0, 0, 0);
+let cameraShake = 0;
+let activeCombat = null;  // { attacker, target, ship } 用于相机跟随 + PiP
+
+// 战斗特写小窗（Picture-in-Picture）相机
+const PIP_W = 340, PIP_H = 240;
+const combatCamera = new THREE.PerspectiveCamera(50, PIP_W / PIP_H, 0.1, 200);
+let pipActive = false;
+
+function updateCombatCamera() {
+  if (!activeCombat || !activeCombat.ship) return;
+  const sp = activeCombat.ship.mesh.position;
+  const tp = activeCombat.target.island.position;
+  const midX = (sp.x + tp.x) / 2;
+  const midZ = (sp.z + tp.z) / 2;
+  // 垂直于 军舰→目标 方向，从侧后方看
+  const dirx = tp.x - sp.x, dirz = tp.z - sp.z;
+  const len = Math.hypot(dirx, dirz) || 1;
+  const perpx = -dirz / len, perpz = dirx / len;
+  const off = 9, h = 5;
+  combatCamera.position.set(midX + perpx * off, CONFIG.oceanLevel + h, midZ + perpz * off);
+  combatCamera.lookAt(midX, CONFIG.oceanLevel + 1.5, midZ);
+  // ✅ 首领光环旋转
+  if (activeCombat.leader && activeCombat.leader.userData.ring) {
+    activeCombat.leader.userData.ring.rotation.z += 0.05;
+  }
+}
+
+function updateCamera(dt, now) {
+  // 默认：俯视地图中心
+  let tx = 0, ty = 0, tz = 0;
+  if (activeCombat) {
+    tx = (activeCombat.attacker.x + activeCombat.target.x) / 2;
+    tz = (activeCombat.attacker.z + activeCombat.target.z) / 2;
+  }
+  cameraLookAt.set(tx, 0, tz);
+  // 相机位置：根据 activeCombat 计算
+  const dist = 30;
+  const camHeight = CONFIG.cameraHeight * (activeCombat ? 0.7 : 1.0);
+  cameraTargetPos.set(tx, camHeight, tz + dist);
+  camera.position.lerp(cameraTargetPos, 0.06);
+  camera.lookAt(cameraLookAt);
+  // 屏震
+  if (cameraShake > 0) {
+    camera.position.x += (rng() - 0.5) * cameraShake;
+    camera.position.y += (rng() - 0.5) * cameraShake * 0.5;
+    camera.position.z += (rng() - 0.5) * cameraShake * 0.5;
+    cameraShake -= dt * 2.0;
+  }
+}
+
+// 旗帜飘动
+function updateFlags(time) {
+  for (const n of nations) {
+    if (!n.island.visible) continue;
+    const flag = n.island.children.find(c => c.userData.isFlag);
+    if (flag) flag.rotation.y = Math.sin(time * 0.003 + n.x) * 0.4;
+  }
+}
+
+// ============================================================
+// 回合管理
+// ============================================================
+function rollTurnOrder() {
+  const alive = nations.filter(n => n.alive);
+  const order = [...alive];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
+}
+
+// 通用战斗：动画 + 伤害
+async function performCombat(attacker, target, itemUsed = null) {
+  gameState = (attacker === playerNation) ? STATE.PLAYER_TURN : STATE.AI_TURN;
+  currentTurnNation = attacker;
+  highlightTurn(attacker);
+  activeCombat = { attacker, target, ship: null };
+  pipActive = true;  // ✅ 开启战斗特写小窗
+  // 小窗标签：攻方 → 守方
+  document.getElementById('pip-attacker').textContent = `⚔️ ${attacker.def.name}`;
+  document.getElementById('pip-attacker').style.color = '#' + attacker.def.color.toString(16).padStart(6, '0');
+  document.getElementById('pip-target').textContent = `🛡️ ${target.def.name}`;
+  document.getElementById('pip-target').style.color = '#' + target.def.color.toString(16).padStart(6, '0');
+  updateHUD();
+
+  // 应用一次性装备的即时效果（军队 + 护盾）
+  if (itemUsed) {
+    if (itemUsed.subkind === 'buff') {
+      attacker.army += itemUsed.army;
+      showToast(`⚔️ ${attacker.def.name} 获得 ${itemUsed.army} 军队！`);
+      const idx = warehouse.indexOf(itemUsed);
+      if (idx >= 0) warehouse.splice(idx, 1);
+    } else if (itemUsed.subkind === 'shield') {
+      attacker.shielded = true;
+      showToast(`🛡️ ${attacker.def.name} 装备黄金铠甲！`);
+      const idx = warehouse.indexOf(itemUsed);
+      if (idx >= 0) warehouse.splice(idx, 1);
+    }
+  }
+
+  // 生成军舰
+  const ship = buildWarship(attacker.def);
+  activeCombat.ship = ship;  // ✅ PiP 相机跟踪军舰
+  // ✅ 首领：抽到的人物作为首领，挂发光光柱+光环到军舰
+  const leaderEl = document.getElementById('pip-leader');
+  if (attacker.currentChar) {
+    const leader = buildLeaderMarker(attacker.currentChar.color);
+    ship.mesh.add(leader);
+    activeCombat.leader = leader;
+    const cstr = '#' + attacker.currentChar.color.toString(16).padStart(6, '0');
+    leaderEl.textContent = `👤 首领: ${attacker.currentChar.name}`;
+    leaderEl.style.color = cstr;
+    showToast(`👑 ${attacker.def.name} 的首领 ${attacker.currentChar.name} 出战！`, 1800);
+  } else {
+    leaderEl.textContent = '👤 首领: 无';
+    leaderEl.style.color = '#aaa';
+  }
+  await tweenShip(ship, attacker, target, CONFIG.shipSpeed);
+  // 开炮
+  playCannon();  // ✅ 开炮音效
+  await fireCannonball(ship.mesh.position, target);
+  // 爆炸 + 伤害
+  const dmg = computeAttack(attacker, target, itemUsed && itemUsed.subkind !== 'buff' && itemUsed.subkind !== 'shield' ? itemUsed : null);
+  applyDamage(target, dmg);
+  playExplosion();  // ✅ 爆炸音效
+  spawnExplosion(target.island.position, attacker.def.flagColor, 18, 1.0);
+  // 消耗非 buff/shield 的装备
+  if (itemUsed && itemUsed.subkind !== 'buff' && itemUsed.subkind !== 'shield') {
+    const idx = warehouse.indexOf(itemUsed);
+    if (idx >= 0) warehouse.splice(idx, 1);
+  }
+  // 移除军舰
+  scene.remove(ship.mesh);
+  ship.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  // 攻击方军队减少
+  attacker.army = Math.max(1, Math.floor(attacker.army * 0.85));
+  await sleep(0.6);
+  activeCombat = null;
+  pipActive = false;  // ✅ 关闭战斗特写小窗
+  currentTurnNation = null;
+  updateHUD();
+  rebuildTurnStrip();  // 重建顺序条（死亡 / 军队更新）
+
+  return dmg;
+}
+
+async function runAITurn(attacker) {
+  // 保护技能：如果 attacker 是玩家且 shielded=true 已处理；attacker = AI 时不会被 protect 影响
+  const targets = nations.filter(n => n.alive && n !== attacker);
+  if (targets.length === 0) return;
+  const target = targets[Math.floor(rng() * targets.length)];
+  await performCombat(attacker, target, null);
+}
+
+async function runControlTurn(puppet, controlledTarget) {
+  await performCombat(puppet, controlledTarget, null);
+}
+
+// 玩家攻击目标选择（target-panel）
+let playerChosenTarget = null;
+let playerChosenItem = null;
+
+function openTargetPanel() {
+  gameState = STATE.PLAYER_TURN;
+  playerChosenTarget = null;
+  playerChosenItem = null;
+  const grid = document.getElementById('target-grid');
+  grid.innerHTML = '';
+  const targets = nations.filter(n => n.alive && n !== playerNation);
+  for (const t of targets) {
+    const btn = document.createElement('button');
+    btn.className = 'target-btn';
+    btn.textContent = `${t.def.char} ${t.def.name} (HP:${t.hp})`;
+    btn.style.borderColor = '#' + t.def.color.toString(16).padStart(6, '0');
+    btn.onclick = () => {
+      playerChosenTarget = t;
+      document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateConfirmBtn();
+    };
+    grid.appendChild(btn);
+  }
+  // 物品选择
+  const itemGrid = document.getElementById('target-items');
+  itemGrid.innerHTML = '';
+  // "不使用"按钮
+  const noneBtn = document.createElement('button');
+  noneBtn.className = 'item-card kept';
+  noneBtn.innerHTML = `<div class="item-name">不使用</div><div class="item-desc">普通攻击</div>`;
+  noneBtn.onclick = () => {
+    playerChosenItem = null;
+    document.querySelectorAll('#target-items .item-card').forEach(c => c.classList.remove('kept'));
+    noneBtn.classList.add('kept');
+  };
+  itemGrid.appendChild(noneBtn);
+  for (const item of warehouse) {
+    // 复活药水只能自动触发，不能主动使用
+    if (item.subkind === 'revive') continue;
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.innerHTML = `<div class="item-name">${item.name}</div>
+      <div class="item-kind">${ITEM_KIND_LABEL[item.kind] || item.kind} · ${ITEM_SUBKIND_LABEL[item.subkind] || ''}</div>
+      <div class="item-desc">${item.desc}</div>`;
+    const useBtn = document.createElement('button');
+    useBtn.textContent = '使用';
+    useBtn.onclick = () => {
+      playerChosenItem = item;
+      document.querySelectorAll('#target-items .item-card').forEach(c => c.classList.remove('kept'));
+      card.classList.add('kept');
+    };
+    card.appendChild(useBtn);
+    itemGrid.appendChild(card);
+  }
+  document.getElementById('target-panel').classList.remove('hidden');
+  document.getElementById('confirm-attack-btn').disabled = true;
+  document.getElementById('cancel-attack-btn').onclick = () => {
+    closeTargetPanel();
+    currentTurnNation = null;
+    rebuildTurnStrip();
+    setTimeout(() => advanceTurn(), 100);
+  };
+  updateConfirmBtn();
+}
+
+function updateConfirmBtn() {
+  document.getElementById('confirm-attack-btn').disabled = !playerChosenTarget;
+}
+
+function closeTargetPanel() {
+  document.getElementById('target-panel').classList.add('hidden');
+}
+
+async function runPlayerTurn() {
+  await new Promise(resolve => {
+    openTargetPanel();
+    document.getElementById('confirm-attack-btn').onclick = async () => {
+      if (!playerChosenTarget) return;
+      closeTargetPanel();
+      const target = playerChosenTarget;
+      const item = playerChosenItem;
+      await performCombat(playerNation, target, item);
+      resolve();
+    };
+  });
+}
+
+// 控制技能（操控别的国家）
+let controlChosenPuppet = null;
+let controlChosenTarget = null;
+
+function openControlPanel() {
+  gameState = STATE.CONTROL_TURN;
+  controlChosenPuppet = null;
+  controlChosenTarget = null;
+  const puppetGrid = document.getElementById('control-puppet-grid');
+  puppetGrid.innerHTML = '';
+  const targetGrid = document.getElementById('control-target-grid');
+  targetGrid.innerHTML = '';
+
+  const alive = nations.filter(n => n.alive);
+  const aiNations = alive.filter(n => n !== playerNation);
+  for (const n of aiNations) {
+    const btn = document.createElement('button');
+    btn.className = 'country-btn';
+    btn.textContent = `${n.def.char} ${n.def.name}`;
+    btn.style.borderColor = '#' + n.def.color.toString(16).padStart(6, '0');
+    btn.onclick = () => {
+      controlChosenPuppet = n;
+      document.querySelectorAll('#control-puppet-grid .country-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateControlConfirm();
+    };
+    puppetGrid.appendChild(btn);
+  }
+  for (const n of alive.filter(x => x !== playerNation)) {
+    const btn = document.createElement('button');
+    btn.className = 'country-btn';
+    btn.textContent = `${n.def.char} ${n.def.name} (HP:${n.hp})`;
+    btn.style.borderColor = '#' + n.def.color.toString(16).padStart(6, '0');
+    btn.onclick = () => {
+      controlChosenTarget = n;
+      document.querySelectorAll('#control-target-grid .country-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateControlConfirm();
+    };
+    targetGrid.appendChild(btn);
+  }
+  document.getElementById('control-cancel-btn').onclick = () => {
+    document.getElementById('control-panel').classList.add('hidden');
+    consumeSkillFromWarehouse('control');
+    advanceTurn();
+  };
+  document.getElementById('control-confirm-btn').onclick = async () => {
+    if (!controlChosenPuppet || !controlChosenTarget) return;
+    document.getElementById('control-panel').classList.add('hidden');
+    consumeSkillFromWarehouse('control');
+    await runControlTurn(controlChosenPuppet, controlChosenTarget);
+    advanceTurn();
+  };
+  document.getElementById('control-panel').classList.remove('hidden');
+  updateControlConfirm();
+}
+
+function updateControlConfirm() {
+  document.getElementById('control-confirm-btn').disabled = !(controlChosenPuppet && controlChosenTarget);
+}
+
+function consumeSkillFromWarehouse(subkind) {
+  const idx = warehouse.findIndex(i => i.subkind === subkind);
+  if (idx >= 0) warehouse.splice(idx, 1);
+}
+
+// ============================================================
+// 保护技能：每回合开始时给玩家加 shield
+// ============================================================
+function applyProtectSkill() {
+  const idx = warehouse.findIndex(i => i.subkind === 'protect');
+  if (idx >= 0) {
+    warehouse.splice(idx, 1);
+    playerNation.shielded = true;
+    showToast('🛡️ 保护本国生效！本回合免疫伤害！');
+    return true;
+  }
+  return false;
+}
+
+// ============================================================
+// 挑衅技能：回合末追加 AI 对 AI
+// ============================================================
+async function runInstigateSkill() {
+  const idx = warehouse.findIndex(i => i.subkind === 'instigate');
+  if (idx < 0) return false;
+  warehouse.splice(idx, 1);
+  showToast('🔥 挑拨离间生效！追加 1 次 AI 对 AI 战斗！');
+  const aiAlive = nations.filter(n => n.alive && n !== playerNation);
+  if (aiAlive.length < 2) return true;
+  const a = aiAlive[Math.floor(rng() * aiAlive.length)];
+  let targets = aiAlive.filter(n => n !== a);
+  const t = targets[Math.floor(rng() * targets.length)];
+  await performCombat(a, t, null);
+  return true;
+}
+
+// ============================================================
+// 转盘 → 结果面板
+// ============================================================
+async function openWheelPanel() {
+  // ✅ 防重复打开（倒计时触发与回合结束触发可能撞车）
+  if (gameState === STATE.SPIN || gameState === STATE.SPIN_RESULT) return;
+  if (!playerNation || !playerNation.alive) return;
+  gameState = STATE.SPIN;
+  resetWheels();
+  document.getElementById('wheel-panel').classList.remove('hidden');
+  document.getElementById('spin-status').textContent = '点击「开始抽奖」按钮';
+  document.getElementById('spin-btn').disabled = false;
+  document.getElementById('spin-btn').textContent = '🎲 开始抽奖';
+  document.getElementById('skip-spin-btn').disabled = false;
+}
+
+async function doSpin() {
+  document.getElementById('spin-btn').disabled = true;
+  document.getElementById('skip-spin-btn').disabled = true;
+  document.getElementById('spin-status').textContent = '转盘转动中...';
+  const [c, s, e] = await Promise.all([
+    spinWheel('character'),
+    spinWheel('skill'),
+    spinWheel('equipment'),
+  ]);
+  document.getElementById('spin-status').textContent = '抽奖完成！';
+  showResultPanel([c, s, e]);
+}
+
+let pendingItems = [];
+let pendingKeep = [false, false, false];
+
+function showResultPanel(results) {
+  gameState = STATE.SPIN_RESULT;
+  pendingItems = results;
+  pendingKeep = [true, true, true];  // 默认全保留
+  document.getElementById('wheel-panel').classList.add('hidden');
+  const list = document.getElementById('result-list');
+  list.innerHTML = '';
+  results.forEach((item, i) => {
+    const card = document.createElement('div');
+    card.className = 'item-card kept';
+    card.dataset.idx = i;
+    card.innerHTML = `
+      <div class="item-name">${item.name}</div>
+      <div class="item-kind">${ITEM_KIND_LABEL[item.kind] || ''} · ${ITEM_SUBKIND_LABEL[item.subkind] || ''}</div>
+      <div class="item-desc">${item.desc}</div>
+      <div class="item-actions">
+        <button data-act="keep">✅ 保留</button>
+        <button data-act="discard" class="secondary">🗑️ 丢弃</button>
+      </div>`;
+    card.querySelector('[data-act="keep"]').onclick = () => {
+      pendingKeep[i] = true;
+      updateResultCards();
+    };
+    card.querySelector('[data-act="discard"]').onclick = () => {
+      pendingKeep[i] = false;
+      updateResultCards();
+    };
+    list.appendChild(card);
+  });
+  updateResultCards();
+  document.getElementById('result-panel').classList.remove('hidden');
+  document.getElementById('result-keep-all-btn').onclick = () => {
+    pendingKeep = [true, true, true];
+    updateResultCards();
+  };
+  document.getElementById('result-confirm-btn').onclick = confirmSpinResults;
+}
+
+function updateResultCards() {
+  const cards = document.querySelectorAll('#result-list .item-card');
+  let keepCount = pendingKeep.filter(Boolean).length;
+  cards.forEach((card, i) => {
+    if (pendingKeep[i]) card.classList.add('kept'), card.classList.remove('discarded');
+    else card.classList.remove('kept'), card.classList.add('discarded');
+  });
+  const currentW = warehouse.length;
+  const projected = currentW + keepCount;
+  const info = document.getElementById('result-info');
+  if (projected > CONFIG.warehouseMax) {
+    info.style.color = '#ff5252';
+    info.textContent = `⚠️ 仓库将满 (${projected}/${CONFIG.warehouseMax})，最旧的 ${projected - CONFIG.warehouseMax} 件将被自动丢弃`;
+  } else {
+    info.style.color = '#aaa';
+    info.textContent = `仓库 ${projected}/${CONFIG.warehouseMax}`;
+  }
+}
+
+function confirmSpinResults() {
+  // 逐个处理：保留的进仓库（FIFO 丢弃最旧），丢弃的丢掉
+  for (let i = 0; i < pendingItems.length; i++) {
+    if (pendingKeep[i]) {
+      tryKeepWithOverflow(pendingItems[i]);
+    } else {
+      showToast(`🗑️ 丢弃了 ${pendingItems[i].name}`);
+    }
+  }
+  document.getElementById('result-panel').classList.add('hidden');
+  pendingItems = [];
+  pendingKeep = [];
+  // 应用 character / skill 到玩家国家
+  applySpinEffects();
+  // 重置转盘冷却
+  spinCountdown = CONFIG.spinInterval;
+  // ✅ 倒计时打断的抽奖 → 恢复原回合；回合结束的抽奖 → 开新回合
+  if (resumeAfterSpin) {
+    resumeAfterSpin = false;
+    advanceTurn();
+  } else {
+    startRound();
+  }
+}
+
+function applySpinEffects() {
+  if (!playerNation) return;
+  for (let i = 0; i < pendingItems.length; i++) {
+    if (!pendingKeep[i]) continue;
+    const item = pendingItems[i];
+    if (item.kind === 'character') {
+      playerNation.currentChar = item;
+      showToast(`👤 ${playerNation.def.name} 装备了 ${item.name}！`);
+    } else if (item.kind === 'skill') {
+      playerNation.currentSkill = item;
+      showToast(`🌀 ${playerNation.def.name} 习得技能 ${item.name}！`);
+    } else if (item.kind === 'equipment') {
+      playerNation.currentEquipment = item;
+    }
+  }
+}
+
+// ============================================================
+// 开始 / 结束 / 重置
+// ============================================================
+let playerNation = null;
+let selectedCountry = null;
+
+function buildCountryGrid() {
+  const grid = document.getElementById('country-grid');
+  grid.innerHTML = '';
+  // ✅ 初始禁用 Start 按钮
+  const startBtn = document.getElementById('start-btn');
+  if (startBtn) startBtn.disabled = true;
+  for (const def of NATION_DEFS) {
+    const btn = document.createElement('button');
+    btn.className = 'country-btn';
+    btn.textContent = def.label;
+    btn.style.borderColor = '#' + def.color.toString(16).padStart(6, '0');
+    btn.dataset.nationId = def.id;
+    btn.onclick = () => {
+      selectedCountry = def.id;
+      document.querySelectorAll('#country-grid .country-btn').forEach(b => {
+        b.classList.remove('selected');
+        b.style.background = 'rgba(255,255,255,0.1)';
+      });
+      btn.classList.add('selected');
+      btn.style.background = 'rgba(255,223,0,0.3)';
+      // ✅ 启用 Start 按钮
+      if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.textContent = `🎮 选择 ${def.name} 开始游戏`;
+      }
+      console.log('✅ 已选择国家:', def.name, '(' + def.id + ')');
+    };
+    grid.appendChild(btn);
+  }
+}
+
+function resetGame() {
+  // 重置 RNG
+  rng = mulberry32(CONFIG.seed);
+  // 清空仓库
+  warehouse.length = 0;
+  // 重置国家
+  for (const n of nations) {
+    n.hp = CONFIG.startingHP;
+    n.army = CONFIG.startingArmy;
+    n.alive = true;
+    n.shielded = false;
+    n.currentChar = null;
+    n.currentSkill = null;
+    n.currentEquipment = null;
+    n.island.visible = true;
+    n.island.position.y = CONFIG.oceanLevel;
+    n.island.userData.sinkStart = null;
+    n.island.children.forEach(c => { if (c.userData.isFlag) c.rotation.y = 0; });
+  }
+  // 玩家国家
+  if (selectedCountry) {
+    playerNation = nations.find(n => n.def.id === selectedCountry);
+  } else {
+    playerNation = nations[0];
+  }
+  // 重置粒子（按种类回收到对应池）
+  for (const p of activeParticles) {
+    p.mesh.visible = false;
+    if (p.kind === 'debris') debrisPool.push(p);
+    else explosionPool.push(p);
+  }
+  activeParticles.length = 0;
+  // 重置回合
+  roundNumber = 0;
+  spinCountdown = CONFIG.spinInterval;
+  currentTurnNation = null;
+  cameraShake = 0;
+  activeCombat = null;
+  gameState = STATE.MENU;
+  // UI
+  document.getElementById('start-panel').classList.remove('hidden');
+  document.getElementById('end-panel').classList.add('hidden');
+  document.getElementById('wheel-panel').classList.add('hidden');
+  document.getElementById('result-panel').classList.add('hidden');
+  document.getElementById('target-panel').classList.add('hidden');
+  document.getElementById('control-panel').classList.add('hidden');
+  document.getElementById('warehouse-panel').classList.add('hidden');
+  document.getElementById('turn-order').innerHTML = '';
+  updateHUD();
+  console.log('✅ 游戏已重置，选择国家：', playerNation?.def.name);
+}
+
+function startGame() {
+  if (!selectedCountry) {
+    showToast('⚠️ 请先选择一个国家！', 2500);
+    return;
+  }
+  playerNation = nations.find(n => n.def.id === selectedCountry);
+  document.getElementById('start-panel').classList.add('hidden');
+  gameState = STATE.ROUND_INTRO;
+  roundNumber = 1;
+  spinCountdown = CONFIG.spinInterval;
+  showToast(`🎮 欢迎，${playerNation.def.name}！开始第一回合`);
+  // ✅ 捕获 startRound 内部未处理的 Promise 拒绝，避免静默卡死
+  startRound().catch(e => console.error('startRound 异常:', e));
+}
+
+function gameOver(won) {
+  gameState = STATE.GAME_OVER;
+  const aliveCount = nations.filter(n => n.alive).length;
+  const title = document.getElementById('end-title');
+  const stats = document.getElementById('end-stats');
+  if (won) {
+    title.textContent = '🏆 胜利！';
+    stats.innerHTML = `恭喜统一了天下！<br>经过 ${roundNumber} 回合，<br>存活国家: ${aliveCount}<br>仓库物品: ${warehouse.length}`;
+    playWin();  // ✅ 胜利旋律
+  } else {
+    title.textContent = '💀 国破家亡';
+    stats.innerHTML = `${playerNation ? playerNation.def.name : '你的国家'} 已灭国！<br>坚持了 ${roundNumber} 回合<br>最终仓库: ${warehouse.length} 件`;
+    playLose();  // ✅ 失败旋律
+  }
+  document.getElementById('end-panel').classList.remove('hidden');
+}
+
+// ============================================================
+// 主回合循环
+// ============================================================
+let currentOrder = [];
+let currentOrderIdx = 0;
+let roundInProgress = false;
+
+function rebuildTurnStrip() {
+  if (currentOrder.length > 0) buildTurnStrip(currentOrder);
+}
+
+async function startRound() {
+  if (gameState === STATE.GAME_OVER) return;
+  // 检查玩家是否还活着
+  if (!playerNation || !playerNation.alive) {
+    gameOver(false);
+    return;
+  }
+  // 检查是否只剩玩家
+  const aliveCount = nations.filter(n => n.alive).length;
+  if (aliveCount <= 1 && nations.filter(n => n.alive)[0] === playerNation) {
+    gameOver(true);
+    return;
+  }
+  gameState = STATE.ROUND_INTRO;
+  // 重置所有国家的 shielded（回合末清除）
+  for (const n of nations) n.shielded = false;
+  // 应用 protect 技能
+  applyProtectSkill();
+  // 应用控制技能（在第一回合之前）
+  if (playerNation.currentSkill && playerNation.currentSkill.subkind === 'control') {
+    // 推迟到玩家回合前
+  }
+  currentOrder = rollTurnOrder();
+  currentOrderIdx = 0;
+  buildTurnStrip(currentOrder);
+  showToast(`⚔️ 第 ${roundNumber} 回合开始！`);
+  await sleep(1.0);
+  await advanceTurn();
+}
+
+async function advanceTurn() {
+  if (gameState === STATE.GAME_OVER) return;
+  // 回合结束：正常触发抽奖，抽完开新回合
+  if (currentOrderIdx >= currentOrder.length) {
+    roundNumber++;
+    // 挑衅技能：追加战斗
+    await runInstigateSkill();
+    spinPending = false;
+    resumeAfterSpin = false;
+    spinCountdown = CONFIG.spinInterval;
+    setTimeout(() => openWheelPanel(), 500);
+    return;
+  }
+  // ✅ 倒计时触发的抽奖：在本轮某国行动后插入，抽完恢复同一回合
+  if (spinPending) {
+    spinPending = false;
+    resumeAfterSpin = true;
+    spinCountdown = CONFIG.spinInterval;
+    openWheelPanel();
+    return;
+  }
+  const n = currentOrder[currentOrderIdx];
+  if (!n.alive) {
+    currentOrderIdx++;
+    await advanceTurn();
+    return;
+  }
+  // 检查玩家技能 (control)
+  if (n === playerNation) {
+    // 玩家控制技能？
+    if (playerNation.currentSkill && playerNation.currentSkill.subkind === 'control') {
+      await new Promise(resolve => {
+        openControlPanel();
+        // 监听 panel 关闭（无论 confirm/cancel 都会在按钮里推进）
+        const interval = setInterval(() => {
+          if (gameState !== STATE.CONTROL_TURN) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+      });
+    } else {
+      await runPlayerTurn();
+    }
+  } else {
+    await runAITurn(n);
+  }
+  currentOrderIdx++;
+  await advanceTurn();
+}
+
+// ============================================================
+// 主循环（固定步长）
+// ============================================================
+let lastTime = performance.now();
+let acc = 0;
+const FIXED_DT = 1/60;
+
+function physicsStep(dt) {
+  // 抽奖倒计时：仅在游戏中且非抽奖/玩家选择阶段计时
+  if (gameState === STATE.MENU || gameState === STATE.GAME_OVER) return;
+  if (gameState === STATE.SPIN || gameState === STATE.SPIN_RESULT) return;
+  spinCountdown = Math.max(0, spinCountdown - dt);
+  // ✅ 倒计时到 0：标记待抽奖，等当前战斗/玩家行动结束后在 advanceTurn 顶部触发
+  if (spinCountdown <= 0 && !spinPending) {
+    spinPending = true;
+    showToast('🎰 抽奖时间到！稍后弹出转盘', 1500);
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.1) dt = 0.1;
+  acc += dt;
+  while (acc >= FIXED_DT) { physicsStep(FIXED_DT); acc -= FIXED_DT; }
+  const time = now / 1000;
+  updateOceanWaves(time);
+  updateParticles(dt);
+  updateHUDFlash(dt);
+  updateIslandSink(now);
+  updateFlags(now);
+  updateCamera(dt, now);
+  updateHPBars();
+  updateHUD();
+  // ✅ 全屏清屏 + 主画面（scissor 必为关，全屏渲染）
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, innerWidth, innerHeight);
+  renderer.setScissor(0, 0, innerWidth, innerHeight);
+  renderer.clear();
+  renderer.render(scene, camera);
+  // ✅ 战斗特写小窗（Picture-in-Picture）—— try/finally 保证 scissor 必复位，绝不泄漏
+  const pipFrame = document.getElementById('pip-frame');
+  if (pipActive && activeCombat && activeCombat.ship) {
+    try {
+      updateCombatCamera();
+      const px = innerWidth - PIP_W - 20;   // 右下角，留出底部回合条
+      const py = 70;
+      renderer.setScissorTest(true);
+      renderer.setViewport(px, py, PIP_W, PIP_H);
+      renderer.setScissor(px, py, PIP_W, PIP_H);
+      renderer.clear();                       // 仅清小窗区域
+      renderer.render(scene, combatCamera);
+    } catch (e) {
+      console.error('PiP 渲染错误:', e);
+    } finally {
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, innerWidth, innerHeight);
+      renderer.setScissor(0, 0, innerWidth, innerHeight);
+    }
+    pipFrame.classList.remove('hidden');
+  } else {
+    pipFrame.classList.add('hidden');
+  }
+}
+
+// ============================================================
+// 启动
+// ============================================================
+// ✅ 捕获所有未处理的 Promise 拒绝，避免回合链静默卡死
+window.addEventListener('unhandledrejection', e => {
+  console.error('🚨 未捕获的 Promise 拒绝:', e.reason);
+});
+
+setLoading(100, '准备就绪！');
+buildCountryGrid();
+
+// 绑定 UI
+document.getElementById('start-btn').onclick = () => {
+  console.log('🎮 开始游戏');
+  initAudio();  // ✅ 用户手势后激活音频上下文
+  try { startGame(); } catch (e) { console.error('startGame 错误:', e); }
+};
+document.getElementById('restart-btn').onclick = () => {
+  console.log('🔄 重新开始');
+  try { resetGame(); } catch (e) { console.error('resetGame 错误:', e); }
+};
+// ✅ 音效开关
+document.getElementById('mute-btn').onclick = () => {
+  soundEnabled = !soundEnabled;
+  const b = document.getElementById('mute-btn');
+  b.textContent = soundEnabled ? '🔊 音效' : '🔇 静音';
+  if (soundEnabled) initAudio();
+};
+document.getElementById('spin-btn').onclick = () => {
+  try { doSpin(); } catch (e) { console.error('doSpin 错误:', e); }
+};
+document.getElementById('skip-spin-btn').onclick = () => {
+  document.getElementById('wheel-panel').classList.add('hidden');
+  pendingItems = [];
+  pendingKeep = [];
+  spinCountdown = CONFIG.spinInterval;
+  // ✅ 跳过抽奖也遵循：打断 → 恢复；回合结束 → 开新回合
+  if (resumeAfterSpin) {
+    resumeAfterSpin = false;
+    advanceTurn();
+  } else {
+    startRound();
+  }
+};
+document.getElementById('open-warehouse-btn').onclick = () => {
+  const grid = document.getElementById('warehouse-grid');
+  const empty = document.getElementById('warehouse-empty');
+  grid.innerHTML = '';
+  document.getElementById('warehouse-count').textContent = warehouse.length;
+  if (warehouse.length === 0) {
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    warehouse.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'item-card';
+      card.innerHTML = `
+        <div class="item-name">${item.name}</div>
+        <div class="item-kind">${ITEM_KIND_LABEL[item.kind] || ''} · ${ITEM_SUBKIND_LABEL[item.subkind] || ''}</div>
+        <div class="item-desc">${item.desc}</div>
+        <div class="item-actions">
+          <button data-act="discard" class="danger">🗑️ 丢弃</button>
+        </div>`;
+      card.querySelector('[data-act="discard"]').onclick = () => {
+        discardFromWarehouse(idx);
+        document.getElementById('open-warehouse-btn').click();  // 刷新
+      };
+      grid.appendChild(card);
+    });
+  }
+  document.getElementById('warehouse-panel').classList.remove('hidden');
+};
+document.getElementById('close-warehouse-btn').onclick = () => {
+  document.getElementById('warehouse-panel').classList.add('hidden');
+};
+
+// 暴露测试 API + 让 classic 脚本的 safeStart 知道 module 已加载
+window.startGame = startGame;
+window.__nationwar = {
+  nations, warehouse, CONFIG,
+  get playerNation() { return playerNation; },
+  get selectedCountry() { return selectedCountry; },
+  spinNow() { openWheelPanel().then(doSpin); },
+  forceDestroy(id) {
+    const n = nations.find(x => x.def.id === id);
+    if (n) { n.hp = 0; destroyNation(n); }
+  },
+  setSeed(s) { rng = mulberry32(s); },
+};
+
+// 加载屏淡出
+const loadingScreen = document.getElementById('loading');
+setTimeout(() => {
+  loadingScreen.style.opacity = '0';
+  loadingScreen.style.pointerEvents = 'none';
+  setTimeout(() => {
+    loadingScreen.classList.add('hidden');
+    if (loadingScreen.parentNode) loadingScreen.parentNode.removeChild(loadingScreen);
+  }, 500);
+}, 200);
+
+// 立即显示开始面板
+document.getElementById('start-panel').classList.remove('hidden');
+
+updateHUD();
+animate();
+console.log('✅ 国战·十四国天下 初始化完成');
+
+updateHUD();
+animate();
+</script>
+</body></html>
