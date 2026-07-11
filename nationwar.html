@@ -1014,6 +1014,8 @@ function buildLeaderMarker(color) {
 
 
 const debrisPool = [];      // 碎片粒子池（BoxGeometry + MeshStandardMaterial）
+const explosionPool = [];   // 爆炸粒子池（SphereGeometry + MeshBasicMaterial）
+const activeParticles = []; // 当前活跃的粒子（每帧更新）
 
 function spawnExplosion(pos, color = 0xffaa00, count = CONFIG.explosionParticles, force = 1) {
   for (let i = 0; i < count; i++) {
